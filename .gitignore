@@ -1,0 +1,13 @@
+# General
+.DS_Store
+Thumbs.db
+*.log
+node_modules/
+
+# Editor
+.vscode/
+.idea/
+
+# Google Apps Script
+creds.json
+.clasp.json
