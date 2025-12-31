@@ -118,7 +118,7 @@ function processSingleOrder(line, source, contextId) {
   let price = "";
   let notesArr = [];
 
-  const sugarKeys = "全糖|正常糖|標準糖|少糖|半糖|微糖|無糖|一分糖|二分糖|\\d+分糖|正常|標準";
+  const sugarKeys = "全糖|正常糖|標準糖|少糖|半糖|微糖|無糖|去糖|一分糖|二分糖|\\d+分糖|正常|標準";
   const iceKeys = "正常冰|多冰|少冰|微冰|去冰|完全去冰|常溫|熱|溫|熱飲|溫熱|\\d+分冰";
 
   const strictSugar = new RegExp(`^(${sugarKeys})$`);
@@ -127,22 +127,24 @@ function processSingleOrder(line, source, contextId) {
   
   const searchSugar = new RegExp(`(${sugarKeys})`);
   const searchIce = new RegExp(`(${iceKeys})`);
+  const searchPrice = /[\$＄](\d+)/; // 混合模式用的價格搜尋
 
   others.forEach(part => {
-    // 1. 價格
+    // 1. 價格 (嚴格模式)
     if (price === "" && strictPrice.test(part)) { 
       price = part.replace(/^[\$＄]/, ''); 
       return; 
     }
-    // 2. 甜度
+    // 2. 甜度 (嚴格模式)
     if (sugar === "" && strictSugar.test(part)) { sugar = part; return; }
-    // 3. 冰塊
+    // 3. 冰塊 (嚴格模式)
     if (ice === "" && strictIce.test(part)) { ice = part; return; }
 
     // 4. 混合拆解
     let tempPart = part;
     let extracted = false;
 
+    // 抓甜度
     let sMatch = tempPart.match(searchSugar);
     if (sugar === "" && sMatch) {
       sugar = sMatch[0];
@@ -150,6 +152,7 @@ function processSingleOrder(line, source, contextId) {
       extracted = true;
     }
 
+    // 抓冰塊
     let iMatch = tempPart.match(searchIce);
     if (ice === "" && iMatch) {
       ice = iMatch[0];
@@ -157,10 +160,20 @@ function processSingleOrder(line, source, contextId) {
       extracted = true;
     }
 
+    // 抓價格 (新增：混合模式下允許抓 $55)
+    let pMatch = tempPart.match(searchPrice);
+    if (price === "" && pMatch) {
+      price = pMatch[1];
+      tempPart = tempPart.replace(pMatch[0], "");
+      extracted = true;
+    }
+
     // 5. 備註處理
     if (extracted) {
-      if (tempPart.trim().length > 0) {
-        addNoteSafely(notesArr, tempPart.trim());
+      // 移除剩餘的分割符號 (如 /, 空白)
+      tempPart = tempPart.replace(/^[\/\s]+|[\/\s]+$/g, '');
+      if (tempPart.length > 0) {
+        addNoteSafely(notesArr, tempPart);
       }
     } else {
       addNoteSafely(notesArr, part);
