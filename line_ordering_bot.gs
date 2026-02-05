@@ -110,12 +110,20 @@ function processSingleOrder(line, source, contextId) {
     return "⚠️ 格式錯誤：未輸入品項";
   }
 
-  const item = rawParts[0]; 
+  // 從品項名稱中提取價格 (處理 "品項$50" 格式)
+  let item = rawParts[0];
+  let itemPrice = "";
+  const itemPriceMatch = item.match(/[\$＄](\d+)$/);
+  if (itemPriceMatch) {
+    itemPrice = itemPriceMatch[1];
+    item = item.replace(/[\$＄]\d+$/, ''); // 移除品項尾部的價格
+  }
+  
   const others = rawParts.slice(1);
   
   let sugar = "";
   let ice = "";
-  let price = "";
+  let price = itemPrice; // 優先使用從品項名稱中提取的價格
   let notesArr = [];
 
   const sugarKeys = "全糖|正常糖|標準糖|少糖|半糖|微糖|無糖|去糖|一分糖|二分糖|\\d+分糖|正常|標準";
