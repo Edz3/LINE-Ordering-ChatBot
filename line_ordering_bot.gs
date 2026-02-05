@@ -110,13 +110,20 @@ function processSingleOrder(line, source, contextId) {
     return "⚠️ 格式錯誤：未輸入品項";
   }
 
-  // 從品項名稱中提取價格 (處理 "品項$50" 格式)
+  // 從品項名稱中提取價格 (處理 "品項$50" 或 "品項$50備註" 格式)
   let item = rawParts[0];
   let itemPrice = "";
-  const itemPriceMatch = item.match(/[\$＄](\d+)$/);
+  let itemExtraNote = ""; // 價格後面黏著的備註
+  
+  // 支援 $35 結尾，或 $35 後接任意非數字字元 (中文、-、/ 等)
+  const itemPriceMatch = item.match(/[\$＄](\d+)(\D.*)?$/);
   if (itemPriceMatch) {
     itemPrice = itemPriceMatch[1];
-    item = item.replace(/[\$＄]\d+$/, ''); // 移除品項尾部的價格
+    if (itemPriceMatch[2]) {
+      // 移除開頭的分隔符 (-/、空白等)
+      itemExtraNote = itemPriceMatch[2].replace(/^[-\/、\s]+/, '');
+    }
+    item = item.replace(/[\$＄]\d+(\D.*)?$/, ''); // 移除品項尾部的價格和備註
   }
   
   const others = rawParts.slice(1);
@@ -187,6 +194,11 @@ function processSingleOrder(line, source, contextId) {
       addNoteSafely(notesArr, part);
     }
   });
+
+  // 將品項價格後面的備註加入 (如 $35-代訂淑美姊 中的 代訂淑美姊)
+  if (itemExtraNote) {
+    addNoteSafely(notesArr, itemExtraNote);
+  }
 
   const note = notesArr.join(' ');
   const date = new Date();
