@@ -52,9 +52,19 @@ function handleMessage(event) {
   if (msg.startsWith('刪除') || msg.startsWith('移除')) {
     const match = msg.match(/^(刪除|移除)\s*(\d+)$/);
     if (match) {
-      deleteSpecificOrder(replyToken, parseInt(match[2]), contextId);
+      deleteSpecificOrder(replyToken, parseInt(match[2], 10), contextId);
       return;
     }
+  }
+
+  if (msg.startsWith('改金額') || msg.startsWith('修改金額') || msg.startsWith('補金額') || msg.startsWith('改價格') || msg.startsWith('修改價格')) {
+    const match = msg.match(/^(改金額|修改金額|補金額|改價格|修改價格)\s*(\d+)\s+(.+)$/);
+    if (match) {
+      updateOrderPrice(replyToken, parseInt(match[2], 10), match[3], contextId);
+    } else {
+      replyLine(replyToken, "⚠️ 格式錯誤：請輸入「改金額 編號 金額」，例如：改金額 3 30");
+    }
+    return;
   }
 
   if (msg === '說明' || msg === '點餐說明') {
@@ -183,12 +193,22 @@ function processSingleOrder(line, source, contextId) {
       extracted = true;
     }
 
-    // 若同一段已辨識到甜度/冰塊，允許尾端裸數字作為價格，如「半糖少冰55」
+    // 若同一段已辨識到甜度/冰塊，允許剩餘內容以價格開頭，如「半糖少冰55」或「無糖去冰30子承」
     if (price === "" && extracted) {
-      let barePriceMatch = tempPart.match(/^[-\/、\s]*(\d+)$/);
+      let barePriceMatch = tempPart.match(/^[-\/、\s]*(\d{2,3})(.*)$/);
       if (barePriceMatch) {
         price = barePriceMatch[1];
-        tempPart = tempPart.replace(/^[-\/、\s]*\d+$/, "");
+        tempPart = barePriceMatch[2];
+      }
+    }
+
+    // 允許價格和備註同一段輸入，如「30子承」或「55加珍珠」
+    if (price === "" && !extracted) {
+      let priceWithNoteMatch = tempPart.match(/^[\$＄]?\s*(\d{2,3})(.+)$/);
+      if (priceWithNoteMatch) {
+        price = priceWithNoteMatch[1];
+        tempPart = priceWithNoteMatch[2];
+        extracted = true;
       }
     }
 
@@ -279,6 +299,28 @@ function deleteSpecificOrder(replyToken, number, contextId) {
   replyLine(replyToken, `🗑️ 已刪除編號 ${number}：${rowData[2]} (${rowData[1]})`);
 }
 
+function updateOrderPrice(replyToken, number, rawPrice, contextId) {
+  const price = normalizePrice(rawPrice);
+  if (!price) {
+    replyLine(replyToken, "⚠️ 金額格式錯誤：請輸入數字，例如：改金額 3 30");
+    return;
+  }
+
+  const sheet = getOrCreateSheet(contextId);
+  const lastRow = sheet.getLastRow();
+  const targetRow = number + 1;
+
+  if (targetRow > lastRow || number < 1) {
+    replyLine(replyToken, `⚠️ 找不到編號 ${number}，請先看「統計」。`);
+    return;
+  }
+
+  const rowData = sheet.getRange(targetRow, 1, 1, 7).getValues()[0];
+  const oldPrice = rowData[5] ? `$${rowData[5]}` : "空白";
+  sheet.getRange(targetRow, 6).setValue(price);
+  replyLine(replyToken, `💰 已更新編號 ${number}：${rowData[2]} (${rowData[1]}) 金額 ${oldPrice} -> $${price}`);
+}
+
 function sendSummary(replyToken, contextId) {
   const sheet = getOrCreateSheet(contextId);
   const lastRow = sheet.getLastRow();
@@ -332,6 +374,7 @@ function sendHelp(replyToken) {
     "3️⃣ 管理指令：\n" +
     "• 「取消」：刪除你最後一杯\n" +
     "• 「刪除 5」：刪除第5筆\n" +
+    "• 「改金額 5 30」：修改第5筆金額\n" +
     "• 「統計/結單」：查看目前訂單\n" + 
     "• 「清除」：刪除所有舊訂單";
   replyLine(replyToken, helpText);
