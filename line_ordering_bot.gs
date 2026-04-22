@@ -115,15 +115,15 @@ function processSingleOrder(line, source, contextId) {
   let itemPrice = "";
   let itemExtraNote = ""; // 價格後面黏著的備註
   
-  // 支援 $35 結尾，或 $35 後接任意非數字字元 (中文、-、/ 等)
-  const itemPriceMatch = item.match(/[\$＄](\d+)(\D.*)?$/);
+  // 支援 $35/$35元 結尾，或價格後接備註 (中文、-、/ 等)
+  const itemPriceMatch = item.match(/[\$＄]\s*(\d+)(?:元|塊錢|塊)?(.*)?$/);
   if (itemPriceMatch) {
     itemPrice = itemPriceMatch[1];
     if (itemPriceMatch[2]) {
       // 移除開頭的分隔符 (-/、空白等)
       itemExtraNote = itemPriceMatch[2].replace(/^[-\/、\s]+/, '');
     }
-    item = item.replace(/[\$＄]\d+(\D.*)?$/, ''); // 移除品項尾部的價格和備註
+    item = item.replace(/[\$＄]\s*\d+(?:元|塊錢|塊)?.*$/, ''); // 移除品項尾部的價格和備註
   }
   
   const others = rawParts.slice(1);
@@ -133,21 +133,21 @@ function processSingleOrder(line, source, contextId) {
   let price = itemPrice; // 優先使用從品項名稱中提取的價格
   let notesArr = [];
 
-  const sugarKeys = "全糖|正常糖|標準糖|少糖|半糖|微糖|無糖|去糖|一分糖|二分糖|\\d+分糖|正常|標準";
+  const sugarKeys = "全糖|正常糖|標準糖|少糖|半糖|微微糖|微糖|無糖|去糖|一分糖|二分糖|\\d+分糖|正常|標準";
   const iceKeys = "正常冰|多冰|少冰|微冰|去冰|完全去冰|常溫|熱|溫|熱飲|溫熱|\\d+分冰";
 
   const strictSugar = new RegExp(`^(${sugarKeys})$`);
   const strictIce = new RegExp(`^(${iceKeys})$`);
-  const strictPrice = /^[\$＄]?\d+$/; // 支援 $ 符號
+  const strictPrice = /^[\$＄]?\s*\d+(?:元|塊錢|塊)?$/; // 支援 $ 符號與常見價格單位
   
   const searchSugar = new RegExp(`(${sugarKeys})`);
   const searchIce = new RegExp(`(${iceKeys})`);
-  const searchPrice = /[\$＄](\d+)/; // 混合模式用的價格搜尋
+  const searchPrice = /[\$＄]\s*(\d+)|(\d+)(?:元|塊錢|塊)/; // 混合模式用的價格搜尋
 
   others.forEach(part => {
     // 1. 價格 (嚴格模式)
     if (price === "" && strictPrice.test(part)) { 
-      price = part.replace(/^[\$＄]/, ''); 
+      price = normalizePrice(part); 
       return; 
     }
     // 2. 甜度 (嚴格模式)
@@ -178,15 +178,24 @@ function processSingleOrder(line, source, contextId) {
     // 抓價格 (新增：混合模式下允許抓 $55)
     let pMatch = tempPart.match(searchPrice);
     if (price === "" && pMatch) {
-      price = pMatch[1];
+      price = pMatch[1] || pMatch[2];
       tempPart = tempPart.replace(pMatch[0], "");
       extracted = true;
     }
 
+    // 若同一段已辨識到甜度/冰塊，允許尾端裸數字作為價格，如「半糖少冰55」
+    if (price === "" && extracted) {
+      let barePriceMatch = tempPart.match(/^[-\/、\s]*(\d+)$/);
+      if (barePriceMatch) {
+        price = barePriceMatch[1];
+        tempPart = tempPart.replace(/^[-\/、\s]*\d+$/, "");
+      }
+    }
+
     // 5. 備註處理
     if (extracted) {
-      // 移除剩餘的分割符號 (如 /, 空白)
-      tempPart = tempPart.replace(/^[\/\s]+|[\/\s]+$/g, '');
+      // 移除剩餘的分割符號 (如 -, /, 、, 空白)
+      tempPart = tempPart.replace(/^[-\/、\s]+|[-\/、\s]+$/g, '');
       if (tempPart.length > 0) {
         addNoteSafely(notesArr, tempPart);
       }
@@ -214,6 +223,11 @@ function processSingleOrder(line, source, contextId) {
   if (note) successMsg += ` [${note}]`;
   
   return successMsg;
+}
+
+function normalizePrice(text) {
+  const match = text.match(/\d+/);
+  return match ? match[0] : "";
 }
 
 function addNoteSafely(arr, text) {
